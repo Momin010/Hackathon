@@ -1,0 +1,40 @@
+{
+  "name": "hackathon",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Momin010/Hackathon.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Momin010/Hackathon/issues"
+  },
+  "homepage": "https://github.com/Momin010/Hackathon#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.100.1",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "dotenv": "^17.3.1",
+    "google-auth-library": "^10.6.2",
+    "next": "^16.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "typescript": "^6.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2"
+  }
+}
