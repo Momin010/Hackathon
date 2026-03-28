@@ -1,24 +1,63 @@
 export type EventType = 'pizza_event' | 'snacks_event' | 'sandwich_event';
 
-export type DietaryLabel = 'VEGAN' | 'LACTOSE_FREE' | 'GLUTEN_FREE';
-
 export interface DietaryBreakdown {
   vegan: number;
   lactoseFree: number;
   glutenFree: number;
+  nutAllergy: number;
   noRestrictions: number;
 }
 
+// Detailed dietary info for a guest
+export interface GuestDietaryInfo {
+  hasLactoseIntolerance: boolean;
+  hasGlutenAllergy: boolean;
+  hasNutAllergy: boolean;
+  isVegan: boolean;
+  isVegetarian: boolean;
+  otherRestrictions: string[];
+  rawInput: string;
+}
+
+// Shopping list item with dietary requirements
+export interface ShoppingListItem {
+  itemName: string;           // e.g., "Kaurapuuro" (Oatmeal)
+  quantity: string;           // e.g., "4 annosta" (4 portions)
+  dietaryRequirements: string[]; // e.g., ["laktoositon", "vegaaninen"]
+  targetGroup: string;        // e.g., "Kaikki osallistujat" or "Vegaanit"
+  notes?: string;             // Additional context
+}
+
+// Legacy types (kept for compatibility)
 export interface FoodItem {
-  item: string;
-  qty: number;
-  ean: string;
-  slug: string;
-  price: number;
-  labels: DietaryLabel[];
-  totalCost: number;
-  flagged?: boolean;
-  flagReason?: string;
+  name: string;
+  quantity: number;
+  notes?: string;
+  purchased?: boolean;
+}
+
+export interface GeminiFoodItem {
+  name: string;
+  quantity: number;
+  notes?: string;
+}
+
+export interface GeminiRecommendation {
+  items: GeminiFoodItem[];
+  reasoning: string;
+}
+
+// New shopping list response
+export interface ShoppingListRecommendation {
+  items: ShoppingListItem[];
+  summary: string;
+  dietarySummary: {
+    totalAttendees: number;
+    lactoseFreeNeeded: number;
+    glutenFreeNeeded: number;
+    nutFreeNeeded: number;
+    veganNeeded: number;
+  };
 }
 
 export interface OrderRecord {
@@ -30,27 +69,6 @@ export interface OrderRecord {
   adjusted_headcount: number;
   dietary_breakdown: DietaryBreakdown;
   items: FoodItem[];
-  total_estimate: number;
+  reasoning?: string;
   created_at?: string;
-}
-
-export interface SkaupatProduct {
-  ean: string;
-  name: string;
-  slug: string;
-  price: number;
-  labels: string[];
-  brandName: string;
-}
-
-export interface GeminiFoodItem {
-  item: string;
-  searchQuery: string;
-  qty: number;
-  dietaryVariant?: DietaryLabel;
-}
-
-export interface GeminiRecommendation {
-  items: GeminiFoodItem[];
-  reasoning: string;
 }

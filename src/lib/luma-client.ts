@@ -1,4 +1,6 @@
 import { LumaEvent, LumaGuest } from './luma-types';
+import { parseDietaryRestrictions } from './food-engine';
+import { GuestDietaryInfo } from './types';
 
 const BASE_URL = process.env.LUMA_BASE_URL || 'https://luma-mock-server.vercel.app';
 const API_KEY = process.env.LUMA_API_KEY || 'demo-key';
@@ -110,6 +112,7 @@ export async function fetchAllGuests(
   return allGuests;
 }
 
+// Legacy function - kept for compatibility
 export function extractDietaryRestrictions(guest: LumaGuest): string {
   if (!guest.registration_answers) return '';
 
@@ -126,4 +129,12 @@ export function extractDietaryRestrictions(guest: LumaGuest): string {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.join(', ');
   return '';
+}
+
+// New function: Extract parsed dietary info for all guests
+export function extractAllDietaryInfo(guests: LumaGuest[]): GuestDietaryInfo[] {
+  return guests.map((guest) => {
+    const rawRestrictions = extractDietaryRestrictions(guest);
+    return parseDietaryRestrictions(rawRestrictions);
+  });
 }

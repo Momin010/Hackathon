@@ -22,7 +22,8 @@ export async function saveOrder(order: Omit<OrderRecord, 'id' | 'created_at'>): 
       event_type: order.event_type,
       registered: order.registered,
       adjusted_headcount: order.adjusted_headcount,
-      total_estimate: order.total_estimate,
+      dietary_breakdown: order.dietary_breakdown,
+      reasoning: order.reasoning,
     })
     .select()
     .single();
@@ -31,12 +32,9 @@ export async function saveOrder(order: Omit<OrderRecord, 'id' | 'created_at'>): 
 
   const orderItems = order.items.map((item: FoodItem) => ({
     order_id: orderData.id,
-    ean: item.ean,
-    name: item.item,
-    slug: item.slug,
-    qty: item.qty,
-    unit_price: item.price,
-    labels: item.labels,
+    name: item.name,
+    quantity: item.quantity,
+    notes: item.notes || null,
   }));
 
   const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
@@ -58,7 +56,6 @@ export async function getHistory(limit = 50): Promise<OrderRecord[]> {
   if (error) throw new Error(`Failed to fetch history: ${error.message}`);
   if (!orders) return [];
 
-  // Fetch items for each order
   const ordersWithItems = await Promise.all(
     orders.map(async (order) => {
       const { data: items } = await supabase
@@ -74,4 +71,39 @@ export async function getHistory(limit = 50): Promise<OrderRecord[]> {
   );
 
   return ordersWithItems;
+}
+
+export async function getOrder(orderId: string): Promise<OrderRecord> {
+  const supabase = getClient();
+
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .single();
+
+  if (error) throw new Error(`Failed to fetch order: ${error.message}`);
+  if (!order) throw new Error('Order not found');
+
+  const { data: items } = await supabase
+    .from('order_items')
+    .select('*')
+    .eq('order_id', orderId);
+
+  return {
+    ...order,
+    items: items || [],
+  } as OrderRecord;
+}
+
+export async function updateOrderItem(orderId: string, itemId: string, purchased: boolean): Promise<void> {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('order_items')
+    .update({ purchased })
+    .eq('id', itemId)
+    .eq('order_id', orderId);
+
+  if (error) throw new Error(`Failed to update order item: ${error.message}`);
 }

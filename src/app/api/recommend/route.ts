@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
-import { fetchEvent, fetchAllGuests, extractDietaryRestrictions } from '@/lib/luma-client';
+import { fetchEvent, fetchAllGuests, extractAllDietaryInfo } from '@/lib/luma-client';
 import { classifyEvent } from '@/lib/classifier';
 import { computeNoShowRates, getAdjustedHeadcount } from '@/lib/noshow-model';
-import { generateFoodRecommendation } from '@/lib/food-engine';
-import { resolveProduct } from '@/lib/skaupat-client';
+import { generateShoppingListRecommendation } from '@/lib/food-engine';
+import { GuestDietaryInfo } from '@/lib/types';
 import { saveOrder } from '@/lib/supabase-client';
-import { FoodItem, DietaryBreakdown, DietaryLabel, GeminiFoodItem } from '@/lib/types';
+import { createNotification } from '@/lib/notifications';
+import { DietaryBreakdown } from '@/lib/types';
+
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
 
 export async function POST(request: Request) {
   try {
@@ -13,87 +21,45 @@ export async function POST(request: Request) {
     const { event_id } = body;
 
     if (!event_id) {
-      return NextResponse.json({ error: 'event_id is required' }, { status: 400 });
+      return NextResponse.json({ error: 'event_id is required' }, { status: 400, headers: corsHeaders });
     }
 
-    // Step 1: Fetch event details
     const event = await fetchEvent(event_id);
-
-    // Step 2: Fetch approved guests
     const guests = await fetchAllGuests(event_id, 'approved');
     const registered = guests.length;
 
-    // Step 3: Classify event
     const eventType = classifyEvent(event.name, event.description);
 
-    // Step 4: Compute dietary breakdown
+    // Extract detailed dietary info from all guests
+    const guestDiets: GuestDietaryInfo[] = extractAllDietaryInfo(guests);
+
+    // Calculate dietary breakdown
     const dietary: DietaryBreakdown = {
-      vegan: 0,
-      lactoseFree: 0,
-      glutenFree: 0,
-      noRestrictions: 0,
+      vegan: guestDiets.filter((g) => g.isVegan).length,
+      lactoseFree: guestDiets.filter((g) => g.hasLactoseIntolerance).length,
+      glutenFree: guestDiets.filter((g) => g.hasGlutenAllergy).length,
+      nutAllergy: guestDiets.filter((g) => g.hasNutAllergy).length,
+      noRestrictions: guestDiets.filter(
+        (g) =>
+          !g.isVegan &&
+          !g.hasLactoseIntolerance &&
+          !g.hasGlutenAllergy &&
+          !g.hasNutAllergy &&
+          g.otherRestrictions.length === 0
+      ).length,
     };
 
-    for (const guest of guests) {
-      const restrictions = extractDietaryRestrictions(guest).toLowerCase();
-      if (restrictions.includes('vegan') || restrictions.includes('vegaaninen')) {
-        dietary.vegan++;
-      } else if (restrictions.includes('lactose') || restrictions.includes('laktoositon')) {
-        dietary.lactoseFree++;
-      } else if (restrictions.includes('gluten') || restrictions.includes('gluteeniton')) {
-        dietary.glutenFree++;
-      } else {
-        dietary.noRestrictions++;
-      }
-    }
-
-    // Step 5: No-show adjustment
     const rates = await computeNoShowRates();
     const adjustedHeadcount = getAdjustedHeadcount(registered, eventType, rates);
 
-    // Step 6: Generate food recommendation via Gemini
-    const recommendation = await generateFoodRecommendation(
+    // Generate the new dietary-aware shopping list
+    const recommendation = await generateShoppingListRecommendation(
       eventType,
       adjustedHeadcount,
-      dietary
+      dietary,
+      guestDiets
     );
 
-    // Step 7: Resolve each item via S-kaupat
-    const resolvedItems: FoodItem[] = [];
-    const flaggedItems: FoodItem[] = [];
-
-    for (const item of recommendation.items) {
-      const product = await resolveProduct(item.searchQuery, item.dietaryVariant);
-
-      if (product) {
-        resolvedItems.push({
-          item: item.item,
-          qty: item.qty,
-          ean: product.ean,
-          slug: product.slug,
-          price: product.price,
-          labels: product.labels as DietaryLabel[],
-          totalCost: product.price * item.qty,
-        });
-      } else {
-        flaggedItems.push({
-          item: item.item,
-          qty: item.qty,
-          ean: '',
-          slug: '',
-          price: 0,
-          labels: [],
-          totalCost: 0,
-          flagged: true,
-          flagReason: `Could not find in S-kaupat. Try searching manually for: ${item.searchQuery}`,
-        });
-      }
-    }
-
-    const allItems = [...resolvedItems, ...flaggedItems];
-    const totalEstimate = resolvedItems.reduce((sum, item) => sum + item.totalCost, 0);
-
-    // Step 8: Save to Supabase
     let savedOrder;
     try {
       savedOrder = await saveOrder({
@@ -103,11 +69,14 @@ export async function POST(request: Request) {
         registered,
         adjusted_headcount: adjustedHeadcount,
         dietary_breakdown: dietary,
-        items: allItems,
-        total_estimate: totalEstimate,
+        items: recommendation.items.map((item) => ({
+          name: item.itemName,
+          quantity: parseFloat(item.quantity) || 1,
+          notes: `${item.targetGroup}. ${item.dietaryRequirements.join(', ')}${item.notes ? '. ' + item.notes : ''}`,
+        })),
+        reasoning: recommendation.summary,
       });
     } catch (saveError) {
-      // Don't fail the whole request if save fails — return the recommendation anyway
       console.error('Failed to save order:', saveError);
     }
 
@@ -119,16 +88,19 @@ export async function POST(request: Request) {
       adjusted_headcount: adjustedHeadcount,
       no_show_rate: rates[eventType],
       dietary_breakdown: dietary,
-      items: allItems,
-      total_estimate: totalEstimate,
-      reasoning: recommendation.reasoning,
+      items: recommendation.items.map((item) => ({
+        name: item.itemName,
+        quantity: parseFloat(item.quantity) || 1,
+        notes: `${item.targetGroup}. ${item.dietaryRequirements.join(', ')}${item.notes ? '. ' + item.notes : ''}`,
+      })),
+      reasoning: recommendation.summary,
       order_id: savedOrder?.id || null,
-    });
+    }, { headers: corsHeaders });
   } catch (error) {
     console.error('Recommend error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
