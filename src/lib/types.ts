@@ -30,6 +30,7 @@ export interface ShoppingListItem {
 
 // Legacy types (kept for compatibility)
 export interface FoodItem {
+  id?: string;
   name: string;
   quantity: number;
   notes?: string;

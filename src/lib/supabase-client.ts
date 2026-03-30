@@ -60,7 +60,7 @@ export async function getHistory(limit = 50): Promise<OrderRecord[]> {
     orders.map(async (order) => {
       const { data: items } = await supabase
         .from('order_items')
-        .select('*')
+        .select('id, name, quantity, notes, purchased, created_at')
         .eq('order_id', order.id);
 
       return {
@@ -87,7 +87,7 @@ export async function getOrder(orderId: string): Promise<OrderRecord> {
 
   const { data: items } = await supabase
     .from('order_items')
-    .select('*')
+    .select('id, name, quantity, notes, purchased, created_at')
     .eq('order_id', orderId);
 
   return {
